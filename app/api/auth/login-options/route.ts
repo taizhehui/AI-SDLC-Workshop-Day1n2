@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return notFound('No passkey registered for this username');
     }
 
-    const { rpID } = getRelyingParty();
+    const { rpID } = getRelyingParty(request);
     const options = await generateAuthenticationOptions({
       rpID,
       userVerification: 'preferred',

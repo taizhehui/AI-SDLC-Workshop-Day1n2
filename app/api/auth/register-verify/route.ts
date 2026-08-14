@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       return badRequest('Registration challenge expired. Please try again.');
     }
 
-    const { rpID, origin } = getRelyingParty();
+    const { rpID, origin } = getRelyingParty(request);
     const verification = await verifyRegistrationResponse({
       response: response as unknown as RegistrationResponseJSON,
       expectedChallenge,

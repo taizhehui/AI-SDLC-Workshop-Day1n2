@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return conflict('Username already taken');
     }
 
-    const { rpID, rpName } = getRelyingParty();
+    const { rpID, rpName } = getRelyingParty(request);
     const existingCredentials = isAddingDevice
       ? authenticatorDB.findByUserId(existingUser.id)
       : [];

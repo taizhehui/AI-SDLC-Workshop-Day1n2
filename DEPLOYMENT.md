@@ -4,6 +4,36 @@ The app is a standard Next.js 16 server (`npm run build` then `npm start`) backe
 SQLite file. Railway config lives in `railway.json`; deploys are triggered by Railway's
 GitHub integration on every push to `main`.
 
+## Node version (build-breaking if wrong)
+
+**The build host must run Node 22 or newer.** This is pinned two ways so Nixpacks picks it up:
+`engines.node` in `package.json`, and `.nvmrc`.
+
+`better-sqlite3@13` requires Node ≥22 and ships prebuilt binaries only for supported
+versions. On an older Node there is no matching prebuild, so npm falls back to compiling from
+source with `node-gyp` — which needs Python and a C++ toolchain that the Railway image does
+not include. The failure surfaces as:
+
+```
+gyp ERR! find Python  Could not find any Python installation to use
+npm error path /app/node_modules/better-sqlite3
+```
+
+That error is misleading: the fix is the Node version, not installing Python. If Nixpacks
+ever ignores both pins, set `NIXPACKS_NODE_VERSION=22` in the service variables.
+
+`.nvmrc` must keep LF line endings — a trailing `\r` makes the version unparseable. This is
+enforced by `.gitattributes`.
+
+## devDependencies are required at build time
+
+`next build` needs `typescript`, `tailwindcss`, `@tailwindcss/postcss` and the `@types/*`
+packages, all of which are devDependencies. Do **not** set `NPM_CONFIG_PRODUCTION=true` or
+`--omit=dev` for the build step, or the build fails on missing modules.
+
+To trim build time you may optionally set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` — the
+Playwright browser binaries are only needed for E2E runs, never in production.
+
 ## Required environment variables
 
 The app **will not start in production** without `JWT_SECRET`, and passkey login **will fail

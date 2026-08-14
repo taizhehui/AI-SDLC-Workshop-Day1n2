@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       return badRequest('Login challenge expired. Please try again.');
     }
 
-    const { rpID, origin } = getRelyingParty();
+    const { rpID, origin } = getRelyingParty(request);
     const verification = await verifyAuthenticationResponse({
       response: assertion,
       expectedChallenge,

@@ -1,0 +1,13 @@
+# Keep LF in the repository for everything text-like, regardless of the checkout platform.
+* text=auto eol=lf
+
+# Files read by Linux build tooling must never gain a CR: Nixpacks parses `.nvmrc` as a bare
+# version string, and a trailing `\r` turns "22" into an unresolvable version.
+.nvmrc text eol=lf
+*.sh text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary

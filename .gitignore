@@ -1,0 +1,29 @@
+node_modules/
+.next/
+out/
+build/
+
+# Local SQLite database
+todos.db
+todos.db-journal
+todos.db-shm
+todos.db-wal
+*.db
+*.db-journal
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Testing artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+coverage/
+
+# Editors / OS
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts

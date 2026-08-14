@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-priority-high: #ef4444;
+  --color-priority-medium: #f59e0b;
+  --color-priority-low: #3b82f6;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100;
+}
+
+/* Visible keyboard focus everywhere, without suppressing it for mouse users on inputs. */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-blue-500;
+}

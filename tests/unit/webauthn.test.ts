@@ -113,6 +113,49 @@ describe('getRelyingParty', () => {
     process.env.RP_NAME = 'My Todos';
     expect(getRelyingParty().rpName).toBe('My Todos');
   });
+
+  it('strips a scheme and path from a pasted RP_ID', () => {
+    process.env.RP_ID = 'https://myapp.up.railway.app/';
+    expect(getRelyingParty().rpID).toBe('myapp.up.railway.app');
+  });
+
+  it('strips a port from a configured RP_ID', () => {
+    process.env.RP_ID = 'example.com:8443';
+    expect(getRelyingParty().rpID).toBe('example.com');
+  });
+
+  it('overrides a stale localhost RP_ID when served from a real domain', () => {
+    // The exact misconfiguration that produces
+    // 'The RP ID "localhost" is invalid for this domain'.
+    process.env.RP_ID = 'localhost';
+
+    const config = getRelyingParty(requestWith({ host: 'myapp.up.railway.app' }));
+    expect(config.rpID).toBe('myapp.up.railway.app');
+  });
+
+  it('keeps a localhost RP_ID when actually served from localhost', () => {
+    process.env.RP_ID = 'localhost';
+    expect(getRelyingParty(requestWith({ host: 'localhost:3000' })).rpID).toBe('localhost');
+  });
+
+  it('discards a stale localhost RP_ORIGIN on a real domain', () => {
+    process.env.RP_ID = 'localhost';
+    process.env.RP_ORIGIN = 'http://localhost:3000';
+
+    const config = getRelyingParty(
+      requestWith({ host: 'myapp.up.railway.app', 'x-forwarded-proto': 'https' }),
+    );
+    expect(config.origin).toBe('https://myapp.up.railway.app');
+  });
+
+  it('keeps a matching non-local RP_ORIGIN', () => {
+    process.env.RP_ID = 'example.com';
+    process.env.RP_ORIGIN = 'https://example.com';
+
+    expect(getRelyingParty(requestWith({ host: 'example.com' })).origin).toBe(
+      'https://example.com',
+    );
+  });
 });
 
 describe('challengeStore', () => {

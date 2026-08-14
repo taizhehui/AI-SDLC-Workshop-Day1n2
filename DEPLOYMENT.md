@@ -4,25 +4,40 @@ The app is a standard Next.js 16 server (`npm run build` then `npm start`) backe
 SQLite file. Railway config lives in `railway.json`; deploys are triggered by Railway's
 GitHub integration on every push to `main`.
 
-## Node version (build-breaking if wrong)
+## The build image needs Python (build-breaking if absent)
 
-**The build host must run Node 22 or newer.** This is pinned two ways so Nixpacks picks it up:
-`engines.node` in `package.json`, and `.nvmrc`.
-
-`better-sqlite3@13` requires Node ≥22 and ships prebuilt binaries only for supported
-versions. On an older Node there is no matching prebuild, so npm falls back to compiling from
-source with `node-gyp` — which needs Python and a C++ toolchain that the Railway image does
-not include. The failure surfaces as:
+`nixpacks.toml` installs `python3`. Removing it breaks the build with:
 
 ```
 gyp ERR! find Python  Could not find any Python installation to use
 npm error path /app/node_modules/better-sqlite3
 ```
 
-That error is misleading: the fix is the Node version, not installing Python. If Nixpacks
-ever ignores both pins, set `NIXPACKS_NODE_VERSION=22` in the service variables.
+This looks like a native-compilation problem, but nothing is compiled. `better-sqlite3` ships
+prebuilt N-API binaries in `prebuilds/` (including `linux-x64.node`), and its `binding.gyp`
+resolves to `type: none` whenever a prebuild matches the host — the file's own comment says
+"npm's implicit node-gyp rebuild should do nothing when the package contains a prebuild for
+the host".
 
-`.nvmrc` must keep LF line endings — a trailing `\r` makes the version unparseable. This is
+The catch is that npm runs `node-gyp rebuild` for *any* package shipping a `binding.gyp`, and
+gyp's configure step is written in Python. Without an interpreter the install aborts before
+that no-op condition is ever evaluated. Installing `python3` lets gyp run, immediately
+short-circuit, and finish without building anything.
+
+Changing the Node version does **not** fix this — the failure reproduces on Node 18, 22 and
+24 alike, because the trigger is the missing interpreter, not ABI compatibility.
+
+## Node version
+
+Node 22 is pinned three consistent ways: `engines.node` (`>=22`, matching better-sqlite3's own
+requirement), `.nvmrc`, and `NIXPACKS_NODE_VERSION` in `nixpacks.toml`. `engines` alone is only
+a floor, so Nixpacks would otherwise pick the newest release; the explicit pin keeps builds
+reproducible.
+
+The bundled binaries are N-API, so they are ABI-stable across Node majors — the pin is for
+reproducibility, not compatibility.
+
+`.nvmrc` must keep LF line endings; a trailing `\r` makes the version unparseable. This is
 enforced by `.gitattributes`.
 
 ## devDependencies are required at build time

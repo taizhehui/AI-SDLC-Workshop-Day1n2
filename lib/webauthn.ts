@@ -13,16 +13,30 @@ export interface RelyingPartyConfig {
 /** Hosts where WebAuthn permits a plain-HTTP origin. */
 const INSECURE_ORIGIN_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Strip any `:port` suffix, leaving the bare hostname WebAuthn expects as the RP ID. */
-function toHostname(hostHeader: string): string {
-  const trimmed = hostHeader.trim();
+/**
+ * Reduce any host-ish string to the bare hostname WebAuthn expects as an RP ID.
+ *
+ * Tolerates the shapes people actually paste into a dashboard — `https://example.com/`,
+ * `example.com:3000`, `[::1]:3000` — because a scheme or port left in the RP ID makes every
+ * registration fail with a confusing browser-side error.
+ */
+function toHostname(value: string): string {
+  let host = value.trim();
+
+  // Drop a scheme prefix, then anything from the first path separator onward.
+  host = host.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '');
+  host = host.split('/')[0];
+
   // IPv6 literals are bracketed (`[::1]:3000`), so only split after the closing bracket.
-  if (trimmed.startsWith('[')) {
-    const close = trimmed.indexOf(']');
-    return close === -1 ? trimmed : trimmed.slice(0, close + 1);
+  if (host.startsWith('[')) {
+    const close = host.indexOf(']');
+    return close === -1 ? host : host.slice(0, close + 1);
   }
-  return trimmed.split(':')[0];
+  return host.split(':')[0];
 }
+
+const isLocalHostname = (host: string): boolean =>
+  INSECURE_ORIGIN_HOSTS.has(host) || host.endsWith('.localhost');
 
 /**
  * The public host, discovered in priority order:
@@ -37,9 +51,34 @@ function toHostname(hostHeader: string): string {
  * *"The RP ID \"localhost\" is invalid for this domain"* — steps 2 and 3 exist so that
  * cannot happen silently.
  */
+function requestHostname(request?: Request): string | null {
+  const forwarded = request?.headers.get('x-forwarded-host') ?? request?.headers.get('host');
+  if (!forwarded) return null;
+  const host = toHostname(forwarded.split(',')[0]);
+  return host || null;
+}
+
 function resolveHost(request?: Request): string | null {
+  const requestHost = requestHostname(request);
   const configured = process.env.RP_ID?.trim();
-  if (configured) return toHostname(configured);
+
+  if (configured) {
+    const configuredHost = toHostname(configured);
+
+    // A leftover `RP_ID=localhost` (copied from .env.example) on a real domain would make
+    // every registration fail with 'The RP ID "localhost" is invalid for this domain'. The
+    // served host is unambiguously the right answer there, so prefer it and say so loudly
+    // rather than honouring configuration that cannot possibly work.
+    if (isLocalHostname(configuredHost) && requestHost && !isLocalHostname(requestHost)) {
+      console.warn(
+        `RP_ID is set to "${configuredHost}" but this request was served from "${requestHost}". ` +
+          `Using "${requestHost}" — update RP_ID and RP_ORIGIN to silence this warning.`,
+      );
+      return requestHost;
+    }
+
+    return configuredHost;
+  }
 
   const platformDomain =
     process.env.RAILWAY_PUBLIC_DOMAIN?.trim() ||
@@ -47,10 +86,7 @@ function resolveHost(request?: Request): string | null {
     process.env.VERCEL_URL?.trim();
   if (platformDomain) return toHostname(platformDomain);
 
-  const forwarded = request?.headers.get('x-forwarded-host') ?? request?.headers.get('host');
-  if (forwarded) return toHostname(forwarded.split(',')[0]);
-
-  return null;
+  return requestHost;
 }
 
 /** The scheme the browser used, honouring the proxy header Railway and Vercel set. */
@@ -77,7 +113,15 @@ export function getRelyingParty(request?: Request): RelyingPartyConfig {
 
   const configuredOrigin = process.env.RP_ORIGIN?.trim();
   if (configuredOrigin) {
-    return { rpID, rpName, origin: configuredOrigin.replace(/\/$/, '') };
+    // Same guard as the RP ID: a stale localhost origin cannot match what the browser
+    // reports on a public domain, so it is discarded rather than failing every verification.
+    const originHost = toHostname(configuredOrigin);
+    if (!(isLocalHostname(originHost) && !isLocalHostname(rpID))) {
+      return { rpID, rpName, origin: configuredOrigin.replace(/\/$/, '') };
+    }
+    console.warn(
+      `RP_ORIGIN "${configuredOrigin}" does not match the served host "${rpID}" — deriving it instead.`,
+    );
   }
 
   // Preserve the port for local development (`http://localhost:3000`); deployed hosts are

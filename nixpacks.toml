@@ -1,0 +1,24 @@
+# Build image configuration for Nixpacks (Railway).
+#
+# Why Python is installed here, for a project with no Python code:
+#
+# `better-sqlite3` ships prebuilt N-API binaries in `prebuilds/` (including
+# `linux-x64.node`), and its `binding.gyp` short-circuits to `type: none` when a prebuild
+# matching the host exists — its own comment reads "npm's implicit node-gyp rebuild should do
+# nothing when the package contains a prebuild for the host".
+#
+# npm nonetheless invokes `node-gyp rebuild` for any package containing a `binding.gyp`, and
+# gyp's configure step is a Python program. With no interpreter on PATH the install dies at:
+#
+#     gyp ERR! find Python  Could not find any Python installation to use
+#
+# before it ever evaluates the no-op condition. Installing python3 lets gyp run, immediately
+# resolve to `type: none`, and finish without compiling anything — so this costs a package in
+# the build image, not compile time.
+[phases.setup]
+aptPkgs = ["python3"]
+
+[variables]
+# Pin the Node major explicitly. `engines.node` is a floor (">=22"), so Nixpacks is otherwise
+# free to pick the newest release; pinning keeps builds reproducible and matches `.nvmrc`.
+NIXPACKS_NODE_VERSION = "22"

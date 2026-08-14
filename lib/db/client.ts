@@ -1,6 +1,7 @@
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { MIGRATIONS, SCHEMA_SQL } from './schema';
+import { SINGAPORE_HOLIDAYS } from '../singapore-holidays';
 
 /**
  * The single `better-sqlite3` connection for the process.
@@ -45,6 +46,31 @@ function applyMigrations(handle: DatabaseHandle): void {
   }
 }
 
+/**
+ * Populate `holidays` on a brand-new database.
+ *
+ * Runs only when the table is empty, so it costs one COUNT on every other boot and never
+ * overwrites hand-edited rows. This makes the calendar work on a fresh deploy without a
+ * separate seed step — `npm run seed:holidays` remains the way to refresh the list after
+ * adding a new year.
+ */
+function seedHolidaysIfEmpty(handle: DatabaseHandle): void {
+  const { count } = handle.prepare(`SELECT COUNT(*) AS count FROM holidays`).get() as {
+    count: number;
+  };
+  if (count > 0) return;
+
+  const insert = handle.prepare(
+    `INSERT OR IGNORE INTO holidays (date, name) VALUES (?, ?)`,
+  );
+  const run = handle.transaction(() => {
+    for (const holiday of SINGAPORE_HOLIDAYS) {
+      insert.run(holiday.date, holiday.name);
+    }
+  });
+  run();
+}
+
 function createConnection(): DatabaseHandle {
   const handle = new Database(resolveDatabasePath());
 
@@ -56,6 +82,7 @@ function createConnection(): DatabaseHandle {
 
   handle.exec(SCHEMA_SQL);
   applyMigrations(handle);
+  seedHolidaysIfEmpty(handle);
 
   return handle;
 }
